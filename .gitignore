@@ -1,0 +1,7 @@
+*.zip
+data
+.DS_Store
+out
+*.js
+Icon
+.dropbox
