@@ -11,11 +11,34 @@ from os.path import exists
 from datetime import datetime
 from multiprocessing import Pool
 from fiona import open as fi_open
+from argparse import ArgumentParser
 from subprocess import call, DEVNULL
 from rasterio import open as rio_open
+from rasterio.transform import rowcol, xy
 from rasterio.mask import mask as rio_mask
 from rasterio.merge import merge as rio_merge
 from shapely.geometry import Polygon, mapping
+
+
+def coords2Array(a, coords):
+	"""
+	* convert between coords and array position
+	*  returns row,col (y,x) as expected by rasterio
+	"""
+	x, y = coords
+	r, c = rowcol(a, x, y)
+	return int(r), int(c)
+
+
+def array2Coords(a, index):
+	"""
+	* convert between array position and coords
+	*  params are row,col (y,x) as expected by rasterio
+	*  returns coords at the CENTRE of the cell
+	"""
+	row, col = index
+	x, y = xy(a, row, col)
+	return int(x), int(y)
 
 
 def extractPolygon(src, poly):
@@ -41,7 +64,7 @@ def extractPolygon(src, poly):
 
 def outputFiles(crs, masks):
 	"""
-	* Output illustrative GIS (Shapefile and GeiTiff) files of the extracted
+	* Output illustrative GIS (Shapefile and GeoTiff) files of the extracted
 	*  zones and the aoi polygons
 	"""
 
@@ -73,29 +96,28 @@ def outputFiles(crs, masks):
 				dst.write(masks[m]["dtm"], 1)
 
 
-# def f(mask):
-# 	"""
-# 	* just for testing...
-# 	"""
-# 	return mask["meta"]['crs']
+# get settings from args
+parser = ArgumentParser(description="Labib's Greenspace Visibility Tool")
+parser.add_argument('--dtm', help='DTM layer for analysis', required=True)
+parser.add_argument('--dsm', help='DSM layer for analysis', required=True)
+parser.add_argument('--green', help='Binary GreenSpace layer for analysis', required=True)
+parser.add_argument('--aoi', help='Boundary of Area of Interest', required=True)
+parser.add_argument('--padding', help='Required padding for each mask in CRS units (e.g. radius of a viewshed)', required=True)
+parser.add_argument('--sections', nargs=2, help='x and y divisions for masking (e.g. 16 divisions would be `4 4`)', required=True)
+parser.add_argument('--out', help='Path for result file', required=True)
+args = vars(parser.parse_args())
 
+# get args
+dtm_path = args['dtm']
+dsm_path = args['dsm']
+green_path = args['green']
+boundary_path = args['aoi']
+padding = int(args['padding'])
+sections = [ int(x) for x in args['sections'] ]
+out_path = args['out']
 
-'''
-SETTINGS
-'''
-''' NB: We assume that the three datasets are identical in terms of bounds and resolution '''
-out_path = './out/gvi.tif'
-dtm_path = './data2/DTM_testArea.tif'
-dsm_path = './data2/DSM_testArea.tif'
-green_path = './data2/Green_noGreen_testArea.tif'
-boundary_path = './data2/TestArea2.shp'
-padding = 100		# the required padding for each mask in m (e.g. radius of a viewshed)
-sections = [2, 2]	# x, y
-'''---'''
-
-# log start time
+# log start time and log start
 time = datetime.now()
-
 print(f"a {sections[0]}x{sections[1]} grid, {sections[0]*sections[1]} processes, started at {time}.")
 
 # initialise masks array for the results
@@ -128,10 +150,18 @@ with rio_open(dtm_path) as dtm_input:
 			dsm_data = dsm_input.read(1)
 			green_data = green_input.read(1)
 
-			# get clip dimensions
-			aoiWidth =  ceil(((bounds[2]) - (bounds[0])) / sections[0])
-			aoiHeight = ceil(((bounds[3]) - (bounds[1])) / sections[1])
-			print(f"aoi dimensions (m): {aoiWidth}, {aoiHeight}")
+			# adjust bounds to the raster by transforming to image space and back again
+			minx, miny = array2Coords(dtm_input.transform, coords2Array(dtm_input.transform, [bounds[0], bounds[1]]))
+			maxx, maxy = array2Coords(dtm_input.transform, coords2Array(dtm_input.transform, [bounds[2] + dtm_input.res[0], bounds[3] + dtm_input.res[0]]))
+
+			# get width and height of study area
+			w, h = (maxx - minx), (maxy - miny)
+
+			# get width and height of all aois (absorb offcut into first entry)
+			aoiWidth =  [int(w / sections[0])] * sections[0]
+			aoiWidth[0] += w - sum(aoiWidth)
+			aoiHeight = [int(h / sections[1])] * sections[1]
+			aoiHeight[0] += h - sum(aoiHeight)
 
 			# pre-calculate origin location polygon extraction
 			xOrigin = bounds[0] - padding
@@ -143,19 +173,20 @@ with rio_open(dtm_path) as dtm_input:
 
 					# construct a Shapely polygon for use in processing
 					polygon = Polygon([
-						(bounds[0] + (aoiWidth * x) - padding, bounds[1] + (aoiHeight * y) 	- padding), # bl
-						(bounds[0] + (aoiWidth * x) - padding, bounds[1] + (aoiHeight * (y+1)) + padding), # tl
-						(bounds[0] + (aoiWidth * (x+1)) + padding, bounds[1] + (aoiHeight * (y+1)) + padding), # tr
-						(bounds[0] + (aoiWidth * (x+1)) + padding, bounds[1] + (aoiHeight * y) - padding)  # br
+						(bounds[0] + sum(aoiWidth[:x]) - padding, bounds[1] + sum(aoiHeight[:y]) - padding), # bl
+						(bounds[0] + sum(aoiWidth[:x]) - padding, bounds[1] + sum(aoiHeight[:y+1]) + padding), # tl
+						(bounds[0] + sum(aoiWidth[:x+2]) + padding, bounds[1] + sum(aoiHeight[:y+1]) + padding), # tr
+						(bounds[0] + sum(aoiWidth[:x+1]) + padding, bounds[1] + sum(aoiHeight[:y]) - padding)  # br
 					])
 
 					# construct a shapely polygon for use in analysis and trimming the results
 					aoi = Polygon([
-						(bounds[0] + (aoiWidth * x), bounds[1] + (aoiHeight * y)), # bl
-						(bounds[0] + (aoiWidth * x), bounds[1] + (aoiHeight * (y+1))), # tl
-						(bounds[0] + (aoiWidth * (x+1)), bounds[1] + (aoiHeight * (y+1))), # tr
-						(bounds[0] + (aoiWidth * (x+1)), bounds[1] + (aoiHeight * y)) # br
+						(bounds[0] + sum(aoiWidth[:x]), bounds[1] + sum(aoiHeight[:y])), # bl
+						(bounds[0] + sum(aoiWidth[:x]), bounds[1] + sum(aoiHeight[:y+1])), # tl
+						(bounds[0] + sum(aoiWidth[:x+1]), bounds[1] + sum(aoiHeight[:y+1])), # tr
+						(bounds[0] + sum(aoiWidth[:x+1]), bounds[1] + sum(aoiHeight[:y]))  # br
 					])
+
 
 					# extract the polygon and append to masks list
 					dtm, meta = extractPolygon(dtm_input, [polygon])
@@ -170,21 +201,22 @@ with rio_open(dtm_path) as dtm_input:
 						"meta": meta,
 						"aoi": aoi,
 						"options": {
-							"radius":	100,	# viewshed radius
-							"o_height": 2,		# observer height
+							"radius": padding,	# viewshed radius
+							"o_height": 1.7,		# observer height
 							"t_height": 0		# target height
 						}
 					})
 
+					# print(masks[0])
+					# exit()
+
 			# output files for debugging purposes
 			# outputFiles(dtm_input.crs, masks)
-
+			# exit()
 
 # make as many processes as are required and launch them
 with Pool(sections[0] * sections[1]) as p:
 	results = p.map(f, masks)
-
-print(results)
 
 # open all result files in read mode
 files = []
@@ -197,22 +229,22 @@ merged, out_transform = rio_merge(files)
 # update the metadata
 out_meta = files[0].meta.copy()
 out_meta.update({
-		"height": merged.shape[1],
-		"width": merged.shape[2],
-		"transform": out_transform,
-		"dtype": 'float64'
-		})
-
-# check that tmp folder exists
-if not exists('./out/'):
-	makedirs('out')
+	"height": merged.shape[1],
+	"width": merged.shape[2],
+	"transform": out_transform,
+	"dtype": 'float64'
+	})
 
 # create a raster file
 with rio_open(out_path, 'w', **out_meta) as dst:
 	dst.write(merged[0], 1)
 
 # use GDAL binary to calculate histogram and statistics
-call(["gdalinfo", "-stats", out_path], stdout=DEVNULL)
+# call(["gdalinfo", "-stats", out_path], stdout=DEVNULL)
+
+# close all of the files
+for file in files:
+	file.close()
 
 # print how long it took
 print(datetime.now() - time)
