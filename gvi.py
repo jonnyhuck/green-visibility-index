@@ -184,53 +184,7 @@ def f(mask):
 
 
 """
-* Dummy function for testing
+* Do not call this script directly
 """
 if __name__ == '__main__':
-
-	# imports
-	from rasterio.crs import CRS
-	from fiona import open as fi_open
-	from shapely.geometry import shape
-
-	# get the polygon from the shapefile
-	with fi_open("/Users/jonnyhuck/Downloads/labib/40.shp") as aoi:
-		poly = shape(aoi[0]['geometry'])
-
-	# get the dtm data
-	with rio_open("/Users/jonnyhuck/Downloads/labib/DTMextendedFilledal1.tif") as dtm_ds:
-		dtm = dtm_ds.read(1)
-
-	# get the dsm data
-	with rio_open("/Users/jonnyhuck/Downloads/labib/DSMextendedFilledal1.tif") as dsm_ds:
-		dsm = dsm_ds.read(1)
-
-	# get the green space data
-	with rio_open("/Users/jonnyhuck/Downloads/labib/GreenNoGreen_50km_5mFullal2.tif") as green_ds:
-		green = green_ds.read(1)
-
-	# construct a demo mask
-	mask = {
-		'dtm': dtm,
-		'dsm': dsm,
-		'green': green,
-		'meta': {
-			'driver': 'GTiff',
-			'dtype': 'float32',
-			'nodata': 3.4028234663852886e+38,
-			'width': 601,
-			'height': 603,
-			'count': 1,
-			'crs': CRS.from_epsg(27700),
-			'transform': Affine(5.000000003237818, 0.0, 387999.99685591063,0.0, -5.0000000035748755, 385044.9997385157)
-			},
-		'aoi': poly,
-		'options': {
-			'radius': 1000,
-			'o_height': 1.7,
-			't_height': 0
-			}
-		}
-
-	# run a single polygon
-	f(mask)
+	print("please call this script using parallel.py")
