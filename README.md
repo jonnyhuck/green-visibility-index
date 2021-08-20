@@ -1,4 +1,4 @@
-# Greenness Visibility Index
+# Greenness Visibility Index <img src="logo.png" align="right" height="139"/>
 R package available for this python programm at:  [![STBrinkmann R Library](https://badgen.net/badge/STBrinkmann/R%20Library/blue?icon=github)](https://github.com/STBrinkmann/GVI)
 
 This software uses a Python Viewshed implementation to calculate a GVI surface from a DSM, DTM and Binary Greenness Surface. It is part of the paper published at:
