@@ -38,9 +38,9 @@ def lineOfSight(r0, c0, r1, c1, observer_height, resolution, target_height, dsm_
 	"""
 
 	# init variables for loop
-	cur_dydx = 0 		  	# current dydx (base of object)
-	max_dydx = 0 	  		# biggest dydx so far
-	# top_dydx = 0 		    # current dydx (top of object)
+	cur_dydx = -float('inf') 	# current dydx (base of object)
+	max_dydx = -float('inf')	# biggest dydx so far
+	# top_dydx = -float('inf')      # current dydx (top of object)
 	distance_travelled = 0  # how far we have travelled along the ray
 
 	# get the viewer height
