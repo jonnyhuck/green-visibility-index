@@ -13,7 +13,7 @@ from skimage.draw import line, disk, circle_perimeter
 from numpy import zeros, unique, multiply, array, column_stack
 
 
-def coords2Array(a, x, y):
+def coords_2_array(a, x, y):
 	"""
 	* convert between coords and array position
 	*  returns row,col (y,x) as expected by rasterio
@@ -22,7 +22,7 @@ def coords2Array(a, x, y):
 	return int(r), int(c)
 
 
-def array2Coords(a, row, col):
+def array_2_coords(a, row, col):
 	"""
 	* convert between array position and coords
 	*  params are row,col (y,x) as expected by rasterio
@@ -32,7 +32,7 @@ def array2Coords(a, row, col):
 	return int(x), int(y)
 
 
-def lineOfSight(r0, c0, r1, c1, observer_height, resolution, target_height, dsm_data, dtm_data, output):
+def line_of_sight(r0, c0, r1, c1, observer_height, resolution, target_height, dsm_data, dtm_data, output):
 	"""
 	 * Runs a single ray-trace from one point to another point, returning a list of visible cells
 	"""
@@ -51,6 +51,10 @@ def lineOfSight(r0, c0, r1, c1, observer_height, resolution, target_height, dsm_
 
 	# loop along the pixels in the line
 	for r, c in pixels:
+
+		# if we go off the edge of the data, stop looping
+		if not 0 <= r < dtm_data.shape[0] or not 0 <= c < dtm_data.shape[1]:
+			break
 
 		# distance travelled so far
 		distance_travelled = hypot(c0 - c, r0 - r)
@@ -71,12 +75,13 @@ def lineOfSight(r0, c0, r1, c1, observer_height, resolution, target_height, dsm_
 		if (cur_dydx > max_dydx):
 			max_dydx = cur_dydx
 			output[(r, c)] = 1
+			
 
 	# return updated output surface
 	return output
 
 
-def viewshed(r0, c0, radius_px, resolution, observerHeight, targetHeight, dsm_data, dtm_data, a):
+def viewshed(r0, c0, radius_px, resolution, observer_height, target_height, dsm_data, dtm_data, a):
 	"""
 	* Use Bresenham's Circle / Midpoint algorithm to determine endpoints for viewshed
 	"""
@@ -91,7 +96,7 @@ def viewshed(r0, c0, radius_px, resolution, observerHeight, targetHeight, dsm_da
 	for r, c in column_stack(circle_perimeter(r0, c0, radius_px)):
 
 		# calculate line of sight to each pixel
-		output = lineOfSight(r0, c0, r, c, resolution, observerHeight, targetHeight, dsm_data, dtm_data, output)
+		output = line_of_sight(r0, c0, r, c, resolution, observer_height, target_height, dsm_data, dtm_data, output)
 
 	# return the resulting viewshed
 	return output
@@ -114,8 +119,8 @@ def f(mask):
 		weighting_mask[(r, c)] = exp(-0.0003 * (hypot(radius_px - c, radius_px - r) * mask['meta']['transform'][0]))
 
 	# get pixel references for aoi extents
-	min_r, min_c  = coords2Array(mask["meta"]["transform"], mask["aoi"].bounds[0], mask["aoi"].bounds[3])
-	max_r, max_c  = coords2Array(mask["meta"]["transform"], mask["aoi"].bounds[2], mask["aoi"].bounds[1])
+	min_r, min_c  = coords_2_array(mask["meta"]["transform"], mask["aoi"].bounds[0], mask["aoi"].bounds[3])
+	max_r, max_c  = coords_2_array(mask["meta"]["transform"], mask["aoi"].bounds[2], mask["aoi"].bounds[1])
 
 	# loop through dataset rows and columns
 	for r in range(min_r, max_r+1):
@@ -156,7 +161,7 @@ def f(mask):
 
 	# check that tmp folder exists
 	if not exists('./tmp/'):
-	    makedirs('tmp')
+		makedirs('tmp')
 
 	# make unique filename
 	filepath = f'./tmp/{str(uuid1())[:8]}.tif'
